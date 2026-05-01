@@ -1,6 +1,6 @@
 {
   "name": "damson",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Proactive personal agent for devs who actually ship",
   "license": "MIT",
   "type": "module",
@@ -16,7 +16,8 @@
     "start": "node --env-file=.env dist/runtime.js",
     "dev": "tsc --watch & node --watch --env-file=.env dist/runtime.js",
     "init": "node dist/cli.js init",
-    "pair": "node dist/cli.js pair",
+    "reset": "node dist/cli.js reset",
+    "status": "node dist/cli.js status",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
