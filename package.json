@@ -1,6 +1,6 @@
 {
   "name": "damson",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Proactive personal agent for devs who actually ship",
   "license": "MIT",
   "type": "module",
@@ -22,8 +22,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "cron-parser": "^5.5.0",
     "grammy": "^1.42.0",
-    "cron-parser": "^5.5.0"
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",

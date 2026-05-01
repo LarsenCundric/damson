@@ -8,6 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Brain } from './brain.js';
 import type { BrainConfig } from './config.js';
+import type { Onboarding } from './onboarding.js';
 import type { ToolHandler } from './types.js';
 import { buildSystemPrompt } from './system-prompt.js';
 
@@ -17,6 +18,7 @@ export interface AgentDeps {
   client: Anthropic;
   brain: Brain;
   brainConfig: BrainConfig;
+  onboarding: Onboarding;
   tools: ToolHandler[];
   taskSummary: () => string;
 }
@@ -104,6 +106,7 @@ export class Agent {
       timeVibe: timeVibe(hour),
       isQuietHour,
       systemNotices: opts.systemNotices || '',
+      onboardingBlock: this.deps.onboarding.systemPromptBlock(),
     });
 
     let finalText = '';

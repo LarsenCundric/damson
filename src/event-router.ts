@@ -140,6 +140,47 @@ const POLICY: Record<string, PolicyEntry> = {
   },
 };
 
+/**
+ * Match policy for prefix-typed events like `watcher.<name>`. Tier comes
+ * from the watcher's `notify` field (carried in the payload).
+ */
+function getPolicy(eventType: string, payload: Record<string, unknown>): PolicyEntry {
+  if (POLICY[eventType]) return POLICY[eventType];
+  if (eventType.startsWith('watcher.')) {
+    const tier = (payload.notify as string) || 'ask';
+    if (tier === 'always') {
+      return {
+        requiresAgent: false,
+        priority: 'normal',
+        buildAnnounce: (e) => {
+          const p = e.payload as { watcherName: string; summary: string; eventId: string };
+          return { id: `watcher-${p.eventId}`, message: `🔔 ${p.watcherName}: ${p.summary}`, priority: 'normal' };
+        },
+      };
+    }
+    if (tier === 'digest_only') {
+      return {
+        requiresAgent: false,
+        priority: 'silent',
+        buildSystemEvent: (e) => {
+          const p = e.payload as { watcherName: string; summary: string };
+          return `[watcher:${p.watcherName}] ${p.summary}`;
+        },
+      };
+    }
+    // 'ask' — let agent decide whether to surface
+    return {
+      requiresAgent: true,
+      priority: 'normal',
+      buildSystemEvent: (e) => {
+        const p = e.payload as { watcherName: string; watcherType: string; summary: string };
+        return `[watcher:${p.watcherName} (${p.watcherType})] ${p.summary}\n\nDecide: ping the user about this, just log to brain, or stay silent. The user has set notify=ask for this watcher — they want you to use judgment. Surface only if it's the kind of thing they'd want to know now.`;
+      },
+    };
+  }
+  return { requiresAgent: false, priority: 'silent' };
+}
+
 const COALESCE_MS = 5_000;
 
 interface CoalesceBucket {
@@ -165,7 +206,7 @@ export class EventRouter {
   }
 
   private route(event: Event): void {
-    const policy = POLICY[event.type] || { requiresAgent: false, priority: 'silent' as const };
+    const policy = getPolicy(event.type, event.payload);
     if (policy.handledElsewhere) return;
 
     // Nudge events bypass everything — the real follow-up will fire too

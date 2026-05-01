@@ -11,6 +11,8 @@ import type { Pairing } from './pairing.js';
 import type { ConversationStore } from './conversations.js';
 import type { DamsonConfig } from './types.js';
 import type { SystemEventQueue } from './system-events.js';
+import type { TaskManager } from './tasks.js';
+import type { SupervisedRun } from './supervisor.js';
 import { redactSecrets, KIND_TO_ENV } from './secrets.js';
 
 const ENV_NAME_RE = /^[A-Z][A-Z0-9_]{1,63}$/;
@@ -27,6 +29,9 @@ export interface BotDeps {
   conversations: ConversationStore;
   config: DamsonConfig;
   systemEvents: SystemEventQueue;
+  tasks: TaskManager;
+  activeRuns: Map<string, SupervisedRun>;
+  version: string;
 }
 
 export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot: () => Promise<void> } {
@@ -85,11 +90,44 @@ export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot:
   });
 
   // ============ Built-in commands ============
-  bot.command('version', (ctx) => ctx.reply(`damson 0.1.0`));
+  bot.command('version', (ctx) => ctx.reply(`damson ${deps.version}`));
+
   bot.command('clear', (ctx) => {
     deps.conversations.clear(ctx.chat.id);
     ctx.reply('🧹 conversation cleared.');
   });
+
+  bot.command('tasks', (ctx) => {
+    const summary = deps.tasks.getSummary();
+    ctx.reply(summary || 'No active or recent tasks.');
+  });
+
+  bot.command('kill', (ctx) => {
+    const taskId = (ctx.match || '').toString().trim();
+    if (!taskId) {
+      return ctx.reply('Usage: `/kill <task_id>`. See active tasks with /tasks.', { parse_mode: 'Markdown' });
+    }
+    const run = deps.activeRuns.get(taskId);
+    if (!run) {
+      return ctx.reply(`No active task "${taskId}".`);
+    }
+    run.cancel('manual-cancel');
+    return ctx.reply(`🛑 cancelled "${taskId}".`);
+  });
+
+  bot.command('help', (ctx) =>
+    ctx.reply(
+      [
+        'damson commands:',
+        '/version — show version',
+        '/tasks — active + recent code_task state',
+        '/kill <id> — cancel an active task',
+        '/secret — store an API key (`/secret NAME VALUE` or `/secret VALUE` to be asked)',
+        '/clear — wipe conversation history (brain unaffected)',
+        '/help — this',
+      ].join('\n')
+    )
+  );
 
   bot.command('secret', (ctx) => {
     const chatId = ctx.chat.id;

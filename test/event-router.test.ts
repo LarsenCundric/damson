@@ -123,3 +123,61 @@ test('task.frozen wakes agent immediately', async () => {
   assert.equal(rec.wakes.length, 1);
   assert.match(rec.systemEvents[0].msg, /LIKELY FROZEN/);
 });
+
+test('watcher.* with notify=always announces to user, no agent wake', async () => {
+  const { bus, rec } = setup();
+  bus.emit({
+    type: 'watcher.my-watcher',
+    source: 'watcher',
+    payload: {
+      watcherName: 'my-watcher',
+      watcherType: 'http_poll',
+      notify: 'always',
+      eventId: 'abc',
+      summary: 'value changed: 100 → 110',
+    },
+  });
+  await sleep(2_000);
+  assert.equal(rec.announces.length, 1);
+  assert.match(rec.announces[0].message, /value changed/);
+  assert.equal(rec.wakes.length, 0);
+});
+
+test('watcher.* with notify=digest_only is silent (system event only)', async () => {
+  const { bus, rec } = setup();
+  bus.emit({
+    type: 'watcher.background',
+    source: 'watcher',
+    payload: {
+      watcherName: 'background',
+      watcherType: 'http_poll',
+      notify: 'digest_only',
+      eventId: 'def',
+      summary: 'minor change',
+    },
+  });
+  await sleep(6_500);
+  assert.equal(rec.announces.length, 0);
+  assert.equal(rec.wakes.length, 0);
+  assert.equal(rec.systemEvents.length, 1);
+  assert.match(rec.systemEvents[0].msg, /minor change/);
+});
+
+test('watcher.* with notify=ask wakes agent (lets it decide)', async () => {
+  const { bus, rec } = setup();
+  bus.emit({
+    type: 'watcher.gh',
+    source: 'watcher',
+    payload: {
+      watcherName: 'gh',
+      watcherType: 'github_events',
+      notify: 'ask',
+      eventId: 'pr-42',
+      summary: 'PR #42 needs review',
+    },
+  });
+  await sleep(6_500);
+  assert.equal(rec.wakes.length, 1);
+  assert.match(rec.systemEvents[0].msg, /PR #42 needs review/);
+  assert.match(rec.systemEvents[0].msg, /Decide:/);
+});

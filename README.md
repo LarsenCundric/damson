@@ -24,6 +24,23 @@ npm start
 
 On first run, damson prints a `https://t.me/<your-bot>?start=<token>` link. Tap it from your phone — you're paired.
 
+## Proactive watchers
+
+damson can watch external things and surface what matters. Drop a YAML file in `brain/watchers/<name>.yaml`:
+
+```yaml
+name: my-prs
+type: github_events
+poll_every: 10m
+notify: ask        # ask | always | digest_only
+config:
+  token_env: GITHUB_TOKEN
+  participating: true
+  include: [review_requested, mention, assign]
+```
+
+See `brain/templates/watchers/` for examples. Built-in types: `github_events`, `http_poll`.
+
 ## Requirements
 
 - Node 22+ (Node 24 recommended; `.nvmrc` pins it)

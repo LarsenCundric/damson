@@ -18,6 +18,8 @@ export interface SystemPromptParts {
   timeVibe: string;
   isQuietHour: boolean;
   systemNotices: string;
+  /** Filled by Onboarding when self.md is the bootstrap template. */
+  onboardingBlock?: string;
 }
 
 export function buildSystemPrompt(parts: SystemPromptParts): string {
@@ -26,6 +28,8 @@ export function buildSystemPrompt(parts: SystemPromptParts): string {
   const todayLog = parts.brain.read(`daily/${parts.brain.today()}.md`) || 'Nothing yet today.';
   const configBlock = parts.brainConfig.formatForPrompt();
   return `${soul}
+
+${parts.onboardingBlock || ''}
 
 ## Time: ${parts.pdtTime} — ${parts.timeVibe}
 ${parts.isQuietHour ? 'Quiet hours: keep working in the background, batch into the morning brief.' : ''}

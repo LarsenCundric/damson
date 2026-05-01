@@ -3,7 +3,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig, BrainConfig } from './config.js';
 import { Brain } from './brain.js';
 import { Pairing } from './pairing.js';
@@ -18,10 +20,33 @@ import { buildTools } from './tools.js';
 import { buildCodeTaskTool, buildCancelTaskTool, buildListTasksTool } from './code-task-tool.js';
 import { Agent } from './agent.js';
 import { startBot } from './bot.js';
+import { Heartbeat } from './heartbeat.js';
+import { WatcherRegistry, registerWatcherType } from './watchers.js';
+import { registerBuiltinWatchers } from './watcher-types.js';
+import { Onboarding } from './onboarding.js';
 import type { SupervisedRun } from './supervisor.js';
 
+function readVersion(): string {
+  try {
+    const here = fileURLToPath(import.meta.url);
+    // dist/runtime.js → repo root is two levels up
+    const candidates = [
+      join(here, '..', '..', 'package.json'),
+      join(here, '..', 'package.json'),
+    ];
+    for (const c of candidates) {
+      try {
+        const pkg = JSON.parse(readFileSync(c, 'utf-8'));
+        if (pkg.name === 'damson' && pkg.version) return pkg.version;
+      } catch {}
+    }
+  } catch {}
+  return '0.0.0-dev';
+}
+
 async function main() {
-  console.log('[boot] damson 0.2.0 starting...');
+  const VERSION = readVersion();
+  console.log(`[boot] damson ${VERSION} starting...`);
   const config = loadConfig();
   console.log(`[boot] brain: ${config.brainDir}`);
   console.log(`[boot] repos: ${config.reposDir}`);
@@ -56,10 +81,12 @@ async function main() {
 
   // === Agent ===
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const onboarding = new Onboarding(config.brainDir);
   const agent = new Agent({
     client,
     brain,
     brainConfig,
+    onboarding,
     tools,
     taskSummary: () => tasks.getSummary(),
   });
@@ -71,6 +98,9 @@ async function main() {
     conversations,
     config,
     systemEvents,
+    tasks,
+    activeRuns,
+    version: VERSION,
   });
 
   // === Router (after bot is created — needs it for announces) ===
@@ -146,6 +176,22 @@ async function main() {
     enqueueSystemEvent: (chatId, msg, type) => systemEvents.enqueue(chatId, msg, type),
     chatId: primaryChatId,
   });
+
+  // === Watchers ===
+  registerBuiltinWatchers(registerWatcherType);
+  const watchers = new WatcherRegistry(config.brainDir, bus);
+  watchers.load();
+
+  // === Heartbeat ===
+  const heartbeat = new Heartbeat({
+    tasks,
+    bus,
+    taskRunsDir: join(config.brainDir, '.task-runs'),
+    activeRuns,
+    intervalMs: config.heartbeatIntervalMin * 60_000,
+  });
+  heartbeat.addHook(() => watchers.tick());
+  heartbeat.start();
 
   // === Boot ===
   await printPairingDeeplinkOnBoot();
