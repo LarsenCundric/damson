@@ -1,0 +1,13 @@
+# Example watcher: poll any HTTP endpoint and emit when the value changes.
+# Copy to brain/watchers/<name>.yaml and uncomment.
+
+# name: site-health
+# type: http_poll
+# poll_every: 5m
+# notify: always
+# config:
+#   url: https://your-site.com/api/health
+#   headers:
+#     Authorization: "Bearer ${env:HEALTH_TOKEN}"
+#   accept_jsonpath: status      # extract JSON path; omit for raw body
+#   change_only: true             # default — only emit on change

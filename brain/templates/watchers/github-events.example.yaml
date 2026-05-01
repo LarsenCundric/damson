@@ -1,0 +1,20 @@
+# Example watcher: poll GitHub for things that need your attention.
+# Copy to brain/watchers/<name>.yaml and uncomment to activate.
+#
+# Required: GITHUB_TOKEN in .env (use /secret to set).
+# The token needs `notifications` scope (a fine-grained PAT works).
+
+# name: my-prs
+# type: github_events
+# poll_every: 10m
+# notify: ask        # ask | always | digest_only
+#                    #   ask         — wake the agent and let it decide
+#                    #   always      — direct ping to Telegram
+#                    #   digest_only — silent log, surfaces in morning brief
+# config:
+#   token_env: GITHUB_TOKEN
+#   participating: true
+#   include:
+#     - review_requested
+#     - mention
+#     - assign

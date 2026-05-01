@@ -1,6 +1,6 @@
 {
   "name": "damson",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Proactive personal agent for devs who actually ship",
   "license": "MIT",
   "type": "module",

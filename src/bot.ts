@@ -13,6 +13,8 @@ import type { DamsonConfig } from './types.js';
 import type { SystemEventQueue } from './system-events.js';
 import type { TaskManager } from './tasks.js';
 import type { SupervisedRun } from './supervisor.js';
+import type { ScheduleManager } from './schedules.js';
+import type { ApprovalRegistry } from './approvals.js';
 import { redactSecrets, KIND_TO_ENV } from './secrets.js';
 
 const ENV_NAME_RE = /^[A-Z][A-Z0-9_]{1,63}$/;
@@ -31,7 +33,11 @@ export interface BotDeps {
   systemEvents: SystemEventQueue;
   tasks: TaskManager;
   activeRuns: Map<string, SupervisedRun>;
+  schedules: ScheduleManager;
+  approvals: ApprovalRegistry;
   version: string;
+  /** Optional callback for /brief command. Returns the brief text. */
+  briefHandler?: () => Promise<string>;
 }
 
 export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot: () => Promise<void> } {
@@ -89,6 +95,30 @@ export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot:
     await next();
   });
 
+  // ============ Approval callbacks ============
+  bot.on('callback_query:data', async (ctx) => {
+    const data = ctx.callbackQuery.data || '';
+    const m = /^(approve|deny):([a-f0-9]+)$/.exec(data);
+    if (!m) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    const decision = m[1] === 'approve' ? 'approved' : 'denied';
+    const id = m[2];
+    const ok = deps.approvals.decide(id, decision);
+    await ctx.answerCallbackQuery({ text: ok ? `✓ ${decision}` : 'expired or unknown' });
+    if (ctx.callbackQuery.message) {
+      const original = (ctx.callbackQuery.message as { text?: string }).text || '';
+      const newText =
+        decision === 'approved'
+          ? `✅ approved\n\n${original.replace(/^🔐 approval needed:\n\n/, '')}`
+          : `❌ denied\n\n${original.replace(/^🔐 approval needed:\n\n/, '')}`;
+      try {
+        await ctx.editMessageText(newText.slice(0, 4000));
+      } catch {}
+    }
+  });
+
   // ============ Built-in commands ============
   bot.command('version', (ctx) => ctx.reply(`damson ${deps.version}`));
 
@@ -100,6 +130,21 @@ export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot:
   bot.command('tasks', (ctx) => {
     const summary = deps.tasks.getSummary();
     ctx.reply(summary || 'No active or recent tasks.');
+  });
+
+  bot.command('schedules', (ctx) => {
+    ctx.reply(deps.schedules.formatList());
+  });
+
+  bot.command('brief', async (ctx) => {
+    if (!deps.briefHandler) return ctx.reply('brief handler not wired');
+    await ctx.reply('🌅 generating morning brief...');
+    try {
+      const text = await deps.briefHandler();
+      await ctx.reply(text.slice(0, 4000));
+    } catch (e) {
+      await ctx.reply(`Error: ${(e as Error).message}`);
+    }
   });
 
   bot.command('kill', (ctx) => {
@@ -122,6 +167,8 @@ export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot:
         '/version — show version',
         '/tasks — active + recent code_task state',
         '/kill <id> — cancel an active task',
+        '/schedules — list active schedules',
+        '/brief — generate the morning brief on demand',
         '/secret — store an API key (`/secret NAME VALUE` or `/secret VALUE` to be asked)',
         '/clear — wipe conversation history (brain unaffected)',
         '/help — this',

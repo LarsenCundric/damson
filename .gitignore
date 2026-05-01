@@ -6,7 +6,10 @@ dist/
 .DS_Store
 
 # User's brain — everything personal lives here, never in git
-brain/
+# (templates/ is the bootstrap source — must be tracked so brain bootstraps
+# correctly on fresh clones)
+brain/*
 !brain/.gitkeep
 !brain/README.md
 !brain/templates/
+!brain/templates/**
