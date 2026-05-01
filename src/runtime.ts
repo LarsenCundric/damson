@@ -139,6 +139,29 @@ async function main() {
     return result.text || '(no output)';
   };
 
+  // Onboarding kickoff — fired by bot.ts on first successful /start. Runs the
+  // agent with a synthetic "begin onboarding" trigger so the system prompt's
+  // current onboarding stage block tells it to ask the first question.
+  const onPaired = async (chatId: number): Promise<string | null> => {
+    if (!onboarding.isActive()) {
+      // Returning user, or self.md was already filled in — skip the
+      // onboarding kickoff. They can just message us normally.
+      return null;
+    }
+    try {
+      const result = await agent.run({
+        chatId,
+        userMessage:
+          '[damson just paired with this user. Trigger the onboarding flow per your system prompt — stage = start. Greet briefly and ask the one question for this stage. No tool calls yet.]',
+        history: [],
+      });
+      return result.text || null;
+    } catch (e) {
+      console.error(`[onPaired] agent error: ${(e as Error).message}`);
+      return `paired. send me a message to start. (onboarding kickoff failed: ${(e as Error).message})`;
+    }
+  };
+
   const { bot, printPairingDeeplinkOnBoot } = startBot({
     agent,
     pairing,
@@ -151,6 +174,7 @@ async function main() {
     approvals,
     version: VERSION,
     briefHandler,
+    onPaired,
   });
 
   // Register the approval tool now that we have the bot instance + chat id

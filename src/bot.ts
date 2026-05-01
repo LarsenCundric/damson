@@ -39,6 +39,13 @@ export interface BotDeps {
   version: string;
   /** Optional callback for /brief command. Returns the brief text. */
   briefHandler?: () => Promise<string>;
+  /**
+   * Optional. Fires once per chat right after a successful /start pairing.
+   * Used to kick off the onboarding conversation without waiting for the
+   * user to send another message. Returns text to post as the bot's first
+   * authored message; if it returns falsy, no follow-up is sent.
+   */
+  onPaired?: (chatId: number) => Promise<string | null | undefined>;
 }
 
 export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot: () => Promise<void> } {
@@ -75,9 +82,21 @@ export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot:
     if (result === 'already_paired') {
       await ctx.reply('✓ already linked. send me a message.');
     } else if (result === 'bound') {
-      await ctx.reply(
-        `✓ linked. chat id ${chatId} is now this damson's owner.\n\nsend me a message to start.`
-      );
+      await ctx.reply(`✓ linked. chat id ${chatId} is yours.`);
+      // Fire the onboarding kickoff so the user doesn't have to send another
+      // message just to get started. Telegram requires the user to message
+      // the bot first (which /start counts as) before the bot can DM — once
+      // /start has been received, we can freely message back.
+      if (deps.onPaired) {
+        try {
+          const greeting = await deps.onPaired(chatId);
+          if (greeting && greeting.trim()) {
+            await safeSendMessage(bot, chatId, greeting.trim());
+          }
+        } catch (e) {
+          console.error(`[onPaired] error: ${(e as Error).message}`);
+        }
+      }
     } else {
       // 'invalid' — silent drop (don't tell strangers anything)
     }
