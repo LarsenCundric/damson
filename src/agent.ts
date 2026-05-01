@@ -23,11 +23,14 @@ export interface AgentDeps {
 
 export interface RunOpts {
   chatId: number;
+  /** User message text. Empty for autonomous wakes — use systemNotices instead. */
   userMessage: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   onTextChunk?: (chunk: string) => void;
   systemNotices?: string;
   model?: string;
+  /** True when invoked by the router (no user input). Changes the user message wrapping. */
+  autonomous?: boolean;
 }
 
 export interface RunResult {
@@ -63,7 +66,11 @@ function timeVibe(hour: number): string {
 }
 
 export class Agent {
-  constructor(private deps: AgentDeps) {}
+  private deps: AgentDeps;
+
+  constructor(deps: AgentDeps) {
+    this.deps = deps;
+  }
 
   private toolDefsForApi() {
     return this.deps.tools.map((t) => t.def);
@@ -74,10 +81,15 @@ export class Agent {
   }
 
   async run(opts: RunOpts): Promise<RunResult> {
-    const { chatId, userMessage, history, onTextChunk } = opts;
+    const { chatId, userMessage, history, onTextChunk, autonomous } = opts;
+    // Autonomous wakes: prepend the system notices into the user slot as a
+    // fake "trigger" message so Claude gets context but can refuse to act.
+    const triggerMessage = autonomous
+      ? `[AUTONOMOUS WAKE — no user input]\n\n${opts.systemNotices || '(no notices)'}\n\nDecide: synthesize a 1-3 line update for the user, run a verification tool then update them, or stay silent. You were not asked anything — only respond if there's something user-visible to add.`
+      : userMessage;
     const messages: Anthropic.MessageParam[] = [
       ...history.map((h) => ({ role: h.role, content: h.content })),
-      { role: 'user', content: userMessage },
+      { role: 'user', content: triggerMessage },
     ];
     const hour = getPdtHour();
     const isQuietHour = hour >= 0 && hour < 8;

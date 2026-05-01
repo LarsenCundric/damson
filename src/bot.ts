@@ -10,6 +10,7 @@ import type { Agent } from './agent.js';
 import type { Pairing } from './pairing.js';
 import type { ConversationStore } from './conversations.js';
 import type { DamsonConfig } from './types.js';
+import type { SystemEventQueue } from './system-events.js';
 import { redactSecrets, KIND_TO_ENV } from './secrets.js';
 
 const ENV_NAME_RE = /^[A-Z][A-Z0-9_]{1,63}$/;
@@ -25,6 +26,7 @@ export interface BotDeps {
   pairing: Pairing;
   conversations: ConversationStore;
   config: DamsonConfig;
+  systemEvents: SystemEventQueue;
 }
 
 export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot: () => Promise<void> } {
@@ -227,10 +229,19 @@ export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot:
       }
     };
 
+    // Drain any queued system events from the router (task completions etc.)
+    // and prepend to the user message so the agent sees them in context.
+    const sysEvents = deps.systemEvents.drain(chatId);
+    const systemNotices =
+      sysEvents.length > 0
+        ? sysEvents.map((e) => `[${e.type}]\n${e.msg}`).join('\n\n---\n\n')
+        : undefined;
+
     try {
       const result = await deps.agent.run({
         chatId,
         userMessage: text,
+        systemNotices,
         history: history.map((t) => ({ role: t.role, content: t.content })),
         onTextChunk: (chunk) => {
           pendingText += chunk;

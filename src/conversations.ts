@@ -14,7 +14,10 @@ export interface Turn {
 }
 
 export class ConversationStore {
-  constructor(private brainDir: string) {
+  private brainDir: string;
+
+  constructor(brainDir: string) {
+    this.brainDir = brainDir;
     mkdirSync(join(brainDir, 'transcripts'), { recursive: true });
   }
 

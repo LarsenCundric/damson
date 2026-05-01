@@ -23,7 +23,10 @@ const TEMPLATE_DIR = (() => {
 })();
 
 export class Brain {
-  constructor(public readonly dir: string) {
+  readonly dir: string;
+
+  constructor(dir: string) {
+    this.dir = dir;
     for (const sub of ['daily', 'people', 'projects', 'decisions', 'transcripts', 'watchers', 'digests']) {
       mkdirSync(join(this.dir, sub), { recursive: true });
     }
