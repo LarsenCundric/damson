@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+
+# User's brain — everything personal lives here, never in git
+brain/
+!brain/.gitkeep
+!brain/README.md
+!brain/templates/
