@@ -47,8 +47,9 @@ Use 'skipped' if the user explicitly opts out of investigation. Use 'done' when 
         return `Error: invalid stage "${stage}". Valid: ${[...VALID_STAGES].join(', ')}`;
       }
       if (input.note) deps.onboarding.recordNote(String(input.note));
-      deps.onboarding.setStage(stage);
-      return `✓ onboarding stage → ${stage}`;
+      const result = deps.onboarding.setStage(stage);
+      if (result.rejected) return `Error: ${result.rejected}`;
+      return `✓ onboarding stage → ${result.stage}`;
     },
   };
 }

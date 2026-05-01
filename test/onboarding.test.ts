@@ -211,6 +211,54 @@ test('first_watcher prompt asks for ONE proposal', () => {
   }
 });
 
+test('cannot advance investigating → confirming if self.md still template', () => {
+  const { dir, cleanup } = setup();
+  try {
+    writeFileSync(join(dir, 'self.md'), TEMPLATE);
+    const o = new Onboarding(dir);
+    o.setStage('investigating');
+    const result = o.setStage('confirming');
+    assert.equal(result.stage, 'investigating', 'should be rejected');
+    assert.ok(result.rejected, 'rejection should include reason');
+    assert.match(result.rejected!, /self\.md is still the empty template/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('CAN advance investigating → confirming once self.md is real', () => {
+  const { dir, cleanup } = setup();
+  try {
+    writeFileSync(join(dir, 'self.md'), TEMPLATE);
+    const o = new Onboarding(dir);
+    o.setStage('investigating');
+    // Now agent (correctly) writes self.md
+    writeFileSync(join(dir, 'self.md'), FILLED);
+    const result = o.setStage('confirming');
+    assert.equal(result.stage, 'confirming');
+    assert.equal(result.rejected, undefined);
+  } finally {
+    cleanup();
+  }
+});
+
+test('guard does not block other transitions', () => {
+  const { dir, cleanup } = setup();
+  try {
+    writeFileSync(join(dir, 'self.md'), TEMPLATE);
+    const o = new Onboarding(dir);
+    // start → investigating: allowed even with template self.md
+    let r = o.setStage('investigating');
+    assert.equal(r.stage, 'investigating');
+    // start → skipped: always allowed
+    const o2 = new Onboarding(mkdtempSync(join(tmpdir(), 'damson-test-skip-')));
+    r = o2.setStage('skipped');
+    assert.equal(r.stage, 'skipped');
+  } finally {
+    cleanup();
+  }
+});
+
 test('done state survives self.md edits', () => {
   const { dir, cleanup } = setup();
   try {

@@ -133,11 +133,31 @@ export class Onboarding {
     this.saveState(s);
   }
 
-  setStage(stage: OnboardingStage): void {
+  /**
+   * Set stage. Returns the actual stage written (which may differ from the
+   * requested one if a guard rejected it — e.g. trying to leave investigating
+   * without self.md being filled out).
+   */
+  setStage(stage: OnboardingStage): { stage: OnboardingStage; rejected?: string } {
     const s = this.ensure();
+
+    // Guard: can't move investigating → confirming without self.md being
+    // a real file (not the empty template). The agent likes to claim it
+    // saved info via a note instead of actually calling write_file; this
+    // catches that.
+    if (s.stage === 'investigating' && (stage === 'confirming' || stage === 'first_watcher')) {
+      if (this.selfIsTemplate()) {
+        return {
+          stage: 'investigating',
+          rejected: `cannot advance to "${stage}" — brain/self.md is still the empty template. Call write_file with path "brain/self.md" first.`,
+        };
+      }
+    }
+
     s.stage = stage;
     if (stage === 'skipped') s.skippedAt = new Date().toISOString();
     this.saveState(s);
+    return { stage };
   }
 
   /** User explicitly opts out. */
@@ -180,15 +200,16 @@ Do NOT call web_fetch, write_file, or other tools yet. Only ask the question.${n
 
       case 'investigating':
         return `## ⚠️ Onboarding stage: investigating
-You have a GitHub username. Now:
-1. \`web_fetch https://api.github.com/users/<username>\` — get profile basics
-2. \`web_fetch https://api.github.com/users/<username>/repos?sort=updated&per_page=20\` — recent repos
-3. Synthesize what you found. Quote-source claims ("Based on your last 30 commits across 5 repos...") so the user can correct.
-4. Use \`write_file\` to write a draft to brain/self.md with sections: Identity, Work (day job + side projects), Style, Goals. Fill what you know; leave the rest blank.
-5. Reply to the user: "Here's what I figured out — anything wrong? [paste a short summary, NOT the whole self.md]". Ask 1-3 short follow-ups based on findings ("What's <project>?" / "Day-job hours I should avoid pinging?").
-6. Call \`onboarding_advance\` with stage: 'confirming'.
+You have a GitHub username. Run these steps in order. DO NOT call onboarding_advance until step 4 has actually happened.
 
-If GitHub returns 404 (user doesn't exist) or rate-limits, fall back: ask the user "couldn't find that profile — what should I know about you?" and write whatever they tell you to self.md, then advance to first_watcher.${notesBlock}`;
+1. \`web_fetch https://api.github.com/users/<username>\` — profile basics
+2. \`web_fetch https://api.github.com/users/<username>/repos?sort=updated&per_page=20\` — recent repos
+3. Synthesize. Quote-source ("Based on your last 30 commits across 5 repos...") so the user can correct.
+4. **CRITICAL:** call \`write_file\` with path \`brain/self.md\` (relative — no leading slash) containing the full markdown self.md you've drafted. Sections: Identity (name from profile, timezone if guessable), Work (what they ship — day job and side projects, inferred from repos), Style (languages, commit cadence), Goals (blank for now). DO NOT skip this step. DO NOT just record a "saved info" note — actually write the file. The next stage's prompt verifies self.md is non-template; if you skip write_file, onboarding loops back here.
+5. Reply to the user with a short summary (NOT the whole file): "Here's what I figured out: [3-5 lines]. Anything wrong?" Ask 1-3 follow-ups based on findings ("What's <repo>?" / "Day-job hours to avoid?").
+6. Call \`onboarding_advance\` with stage: 'confirming'. Optionally include a short note like "drafted self.md from public profile + 20 recent repos".
+
+Fallback if GitHub 404s or rate-limits: ask "couldn't find that profile — tell me about yourself in one paragraph" and write whatever they say to self.md (still via write_file, still required).${notesBlock}`;
 
       case 'confirming':
         return `## ⚠️ Onboarding stage: confirming

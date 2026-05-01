@@ -112,7 +112,20 @@ export class Agent {
       onboardingBlock: this.deps.onboarding.systemPromptBlock(),
     });
 
-    let finalText = '';
+    /**
+     * Text accumulator across iterations.
+     *
+     * The agent loop can produce multiple text blocks across multiple Claude
+     * calls in a single run (Claude says X, calls a tool, says Y, calls
+     * another tool, says Z). The user sees text streamed live as it's
+     * generated. If we end the run with `finalText = lastBlock`, we lose X
+     * and Y from the user-visible reply — they'd see streaming text then
+     * watch it get overwritten by just the last block.
+     *
+     * Instead, accumulate every text block we produce, joined with a blank
+     * line. The user's UI matches what they saw streaming.
+     */
+    const textParts: string[] = [];
     let toolCalls = 0;
     let iterations = 0;
     const model = opts.model || 'claude-sonnet-4-20250514';
@@ -136,15 +149,15 @@ export class Agent {
         };
         response = this.deps.breaker ? await this.deps.breaker.run(callApi) : await callApi();
       } catch (e) {
-        return { text: finalText, toolCalls, iterations, hitLimit: false, error: (e as Error).message };
+        return { text: textParts.join('\n\n'), toolCalls, iterations, hitLimit: false, error: (e as Error).message };
       }
 
-      const textBlocks = response.content
+      const blockText = response.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)
         .join('\n')
         .trim();
-      if (textBlocks) finalText = textBlocks;
+      if (blockText) textParts.push(blockText);
 
       if (response.stop_reason === 'end_turn') break;
 
@@ -182,7 +195,7 @@ export class Agent {
     }
 
     return {
-      text: finalText || '(no text response)',
+      text: textParts.join('\n\n') || '(no text response)',
       toolCalls,
       iterations,
       hitLimit: iterations >= MAX_ITERATIONS,
