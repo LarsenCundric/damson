@@ -5,8 +5,8 @@
  * rules. Memory is on-demand (Claude calls memory_search), not preloaded.
  */
 
-import type { Brain } from './brain.js';
-import type { BrainConfig } from './config.js';
+import type { Brain } from './brain.ts';
+import type { BrainConfig } from './config.ts';
 
 export interface SystemPromptParts {
   brain: Brain;

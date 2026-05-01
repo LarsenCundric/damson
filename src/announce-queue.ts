@@ -6,7 +6,7 @@
  */
 
 import type { Bot } from 'grammy';
-import type { AnnounceItem } from './event-router.js';
+import type { AnnounceItem } from './event-router.ts';
 
 const NORMAL_DEBOUNCE_MS = 1500;
 const DEDUP_TTL_MS = 60_000;

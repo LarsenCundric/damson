@@ -14,9 +14,9 @@
 
 import { existsSync, readFileSync, readdirSync, unlinkSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TaskManager } from './tasks.js';
-import type { EventBus } from './event-bus.js';
-import type { SupervisedRun } from './supervisor.js';
+import type { TaskManager } from './tasks.ts';
+import type { EventBus } from './event-bus.ts';
+import type { SupervisedRun } from './supervisor.ts';
 
 const DEFAULT_TICK_MS = 30_000;
 const ORPHAN_LATE_CHECK_MS = 3 * 60_000; // wait 3min after PID gone before declaring lost

@@ -14,10 +14,10 @@ import { spawn, execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
-import type { ToolHandler, ToolInput } from './types.js';
-import type { Brain } from './brain.js';
-import type { BrainConfig } from './config.js';
-import { KNOWN_CONFIG_KEYS } from './config.js';
+import type { ToolHandler, ToolInput } from './types.ts';
+import type { Brain } from './brain.ts';
+import type { BrainConfig } from './config.ts';
+import { KNOWN_CONFIG_KEYS } from './config.ts';
 
 const PATH_ENV = `${homedir()}/.local/bin:${homedir()}/.smux/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;
 
@@ -229,12 +229,16 @@ export function buildTools(opts: { brain: Brain; brainConfig: BrainConfig; repos
     {
       def: {
         name: 'config_set',
-        description: `Set a hard rule in brain/config.json. Use this when user states "always X / never Y". Known keys: ${Object.keys(KNOWN_CONFIG_KEYS).join(', ')}.`,
+        description: `Set a hard rule in brain/config.json. Use this when the user states "always X / never Y" — config persists across restarts and doesn't drift.
+
+Pre-registered keys (with type validation): ${Object.keys(KNOWN_CONFIG_KEYS).join(', ')}.
+
+You can also set arbitrary keys (e.g. "git.never_force_push": true). They're saved with a soft warning. Use dotted identifiers like "browser.mode" or "github.default_repo".`,
         input_schema: {
           type: 'object',
           properties: {
-            key: { type: 'string' },
-            value: { description: 'Value (depends on key)' },
+            key: { type: 'string', description: 'Dotted identifier, e.g. "browser.mode" or "review.always_request_approval"' },
+            value: { description: 'Boolean, string, or number. For known keys must match the registered type.' },
           },
           required: ['key', 'value'],
         },
@@ -242,7 +246,8 @@ export function buildTools(opts: { brain: Brain; brainConfig: BrainConfig; repos
       execute: (input: ToolInput) => {
         const r = brainConfig.set(String(input.key), input.value);
         if (!r.ok) return `Error: ${r.error}`;
-        return `✓ Set ${input.key} = ${JSON.stringify(input.value)}`;
+        const base = `✓ Set ${input.key} = ${JSON.stringify(input.value)}`;
+        return r.warning ? `${base}\n\n${r.warning}` : base;
       },
     },
   ];

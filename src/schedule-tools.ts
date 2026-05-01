@@ -2,8 +2,8 @@
  * Tools the agent uses to create/list/delete schedules.
  */
 
-import type { ToolHandler, ToolInput } from './types.js';
-import type { ScheduleManager, ScheduleType, DeliveryTier } from './schedules.js';
+import type { ToolHandler, ToolInput } from './types.ts';
+import type { ScheduleManager, ScheduleType, DeliveryTier } from './schedules.ts';
 
 export function buildScheduleTools(deps: { schedules: ScheduleManager }): ToolHandler[] {
   return [

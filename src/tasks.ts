@@ -8,7 +8,7 @@
 
 import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Task, TaskState, TaskKind } from './types.js';
+import type { Task, TaskState, TaskKind } from './types.ts';
 
 const HISTORY_LIMIT = 50;
 

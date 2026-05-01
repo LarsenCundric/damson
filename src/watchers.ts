@@ -21,7 +21,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { EventBus } from './event-bus.js';
+import type { EventBus } from './event-bus.ts';
 
 export type NotifyTier = 'ask' | 'always' | 'digest_only';
 

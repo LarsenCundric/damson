@@ -1,0 +1,31 @@
+[Unit]
+Description=damson — proactive personal agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# CHANGE THESE TWO if you cloned to a different path / different user:
+WorkingDirectory=/home/USER/damson
+User=USER
+
+# Load .env at process start. Keep .env mode 600.
+EnvironmentFile=/home/USER/damson/.env
+
+# Node 22+ required.
+ExecStart=/usr/bin/env node dist/runtime.js
+
+Restart=always
+RestartSec=5
+
+# CRITICAL — KillMode=process means systemctl restart leaves detached
+# Claude Code workers alive. damson's heartbeat picks them up on reboot
+# via orphan recovery. Without this, every restart loses in-flight tasks.
+KillMode=process
+
+# Logs go to journalctl
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

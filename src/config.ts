@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import type { DamsonConfig } from './types.js';
+import type { DamsonConfig } from './types.ts';
 
 function parseQuietHours(raw: string | undefined): { start: number; end: number } {
   if (!raw) return { start: 0, end: 8 };
@@ -80,23 +80,38 @@ export class BrainConfig {
     return { ...this.load() };
   }
 
-  set(key: string, value: unknown): { ok: true } | { ok: false; error: string } {
-    if (!(key in KNOWN_CONFIG_KEYS)) {
-      return { ok: false, error: `unknown config key "${key}". Known: ${Object.keys(KNOWN_CONFIG_KEYS).join(', ')}` };
+  /**
+   * Set a config value. Known keys (in KNOWN_CONFIG_KEYS) get strict
+   * validation. Unknown keys are accepted but flagged via the `warning`
+   * field — this is intentional: the principle is "hard rules persist
+   * here", and forcing every rule to be pre-registered breaks the
+   * "always X / never Y" use case the user hasn't predicted yet.
+   */
+  set(key: string, value: unknown): { ok: true; warning?: string } | { ok: false; error: string } {
+    // Validate key shape — must be a sane dotted identifier
+    if (!/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/.test(key)) {
+      return { ok: false, error: `invalid config key "${key}" — use dotted identifiers like "browser.mode"` };
     }
-    const spec = KNOWN_CONFIG_KEYS[key as KnownConfigKey] as {
-      values?: readonly string[];
-      type?: 'string' | 'bool';
-    };
-    if (spec.values && !spec.values.includes(String(value))) {
-      return { ok: false, error: `invalid value "${value}" for "${key}". Allowed: ${spec.values.join(', ')}` };
+
+    let warning: string | undefined;
+    if (key in KNOWN_CONFIG_KEYS) {
+      const spec = KNOWN_CONFIG_KEYS[key as KnownConfigKey] as {
+        values?: readonly string[];
+        type?: 'string' | 'bool';
+      };
+      if (spec.values && !spec.values.includes(String(value))) {
+        return { ok: false, error: `invalid value "${value}" for "${key}". Allowed: ${spec.values.join(', ')}` };
+      }
+      if (spec.type === 'bool' && typeof value !== 'boolean') {
+        return { ok: false, error: `"${key}" must be a boolean` };
+      }
+      if (spec.type === 'string' && typeof value !== 'string') {
+        return { ok: false, error: `"${key}" must be a string` };
+      }
+    } else {
+      warning = `note: "${key}" is not a registered config key — accepting it. Registered keys with type validation: ${Object.keys(KNOWN_CONFIG_KEYS).join(', ')}.`;
     }
-    if (spec.type === 'bool' && typeof value !== 'boolean') {
-      return { ok: false, error: `"${key}" must be a boolean` };
-    }
-    if (spec.type === 'string' && typeof value !== 'string') {
-      return { ok: false, error: `"${key}" must be a string` };
-    }
+
     const all = this.load();
     all[key] = value;
     mkdirSync(join(this.file, '..'), { recursive: true });
@@ -105,7 +120,7 @@ export class BrainConfig {
     renameSync(tmp, this.file);
     this.cache = all;
     this.mtime = statSync(this.file).mtimeMs;
-    return { ok: true };
+    return warning ? { ok: true, warning } : { ok: true };
   }
 
   formatForPrompt(): string {

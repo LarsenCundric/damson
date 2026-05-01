@@ -13,14 +13,14 @@
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import type { ToolHandler, ToolInput } from './types.js';
-import type { TaskManager } from './tasks.js';
-import type { SessionManager } from './sessions.js';
-import type { EventBus } from './event-bus.js';
-import type { Brain } from './brain.js';
-import type { BrainConfig } from './config.js';
-import type { SupervisedRun } from './supervisor.js';
-import { spawnSupervised } from './supervisor.js';
+import type { ToolHandler, ToolInput } from './types.ts';
+import type { TaskManager } from './tasks.ts';
+import type { SessionManager } from './sessions.ts';
+import type { EventBus } from './event-bus.ts';
+import type { Brain } from './brain.ts';
+import type { BrainConfig } from './config.ts';
+import type { SupervisedRun } from './supervisor.ts';
+import { spawnSupervised } from './supervisor.ts';
 
 const MAX_CONCURRENT = 3;
 const PATH_ENV = `${homedir()}/.local/bin:${homedir()}/.smux/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;

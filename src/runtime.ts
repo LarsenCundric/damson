@@ -6,35 +6,38 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, BrainConfig } from './config.js';
-import { Brain } from './brain.js';
-import { Pairing } from './pairing.js';
-import { ConversationStore } from './conversations.js';
-import { EventBus } from './event-bus.js';
-import { TaskManager } from './tasks.js';
-import { SessionManager } from './sessions.js';
-import { EventRouter } from './event-router.js';
-import { SystemEventQueue } from './system-events.js';
-import { AnnounceQueue } from './announce-queue.js';
-import { buildTools } from './tools.js';
-import { buildCodeTaskTool, buildCancelTaskTool, buildListTasksTool } from './code-task-tool.js';
-import { buildScheduleTools } from './schedule-tools.js';
-import { Agent } from './agent.js';
-import { startBot } from './bot.js';
-import { Heartbeat } from './heartbeat.js';
-import { WatcherRegistry, registerWatcherType } from './watchers.js';
-import { registerBuiltinWatchers } from './watcher-types.js';
-import { Onboarding } from './onboarding.js';
+import { loadConfig, BrainConfig } from './config.ts';
+import { Brain } from './brain.ts';
+import { Pairing } from './pairing.ts';
+import { ConversationStore } from './conversations.ts';
+import { EventBus } from './event-bus.ts';
+import { TaskManager } from './tasks.ts';
+import { SessionManager } from './sessions.ts';
+import { EventRouter } from './event-router.ts';
+import { SystemEventQueue } from './system-events.ts';
+import { AnnounceQueue } from './announce-queue.ts';
+import { buildTools } from './tools.ts';
+import { buildCodeTaskTool, buildCancelTaskTool, buildListTasksTool } from './code-task-tool.ts';
+import { buildScheduleTools } from './schedule-tools.ts';
+import { Agent } from './agent.ts';
+import { startBot } from './bot.ts';
+import { Heartbeat } from './heartbeat.ts';
+import { WatcherRegistry, registerWatcherType } from './watchers.ts';
+import { registerBuiltinWatchers } from './watcher-types.ts';
+import { Onboarding } from './onboarding.ts';
+import { buildOnboardingTool } from './onboarding-tool.ts';
 import {
   ScheduleManager,
   executeBashSchedule,
   executeAiSchedule,
   executeAgentSchedule,
-} from './schedules.js';
-import { collectSources, archiveConsumedDigests, buildBriefPrompt } from './morning-brief.js';
-import { ApprovalRegistry } from './approvals.js';
-import { buildApprovalTool } from './approval-tool.js';
-import type { SupervisedRun } from './supervisor.js';
+} from './schedules.ts';
+import { collectSources, archiveConsumedDigests, buildBriefPrompt } from './morning-brief.ts';
+import { ApprovalRegistry } from './approvals.ts';
+import { buildApprovalTool } from './approval-tool.ts';
+import { CircuitBreaker } from './circuit-breaker.ts';
+import { safeSendMessage } from './tg-safe-send.ts';
+import type { SupervisedRun } from './supervisor.ts';
 
 function readVersion(): string {
   try {
@@ -90,14 +93,23 @@ async function main() {
   const cancelTaskTool = buildCancelTaskTool({ activeRuns });
   const listTasksTool = buildListTasksTool({ tasks });
   const scheduleTools = buildScheduleTools({ schedules });
+  const onboarding = new Onboarding(config.brainDir);
+  const onboardingTool = buildOnboardingTool({ onboarding });
   // approvalTool is built later — needs the bot instance — and added to the
   // tools array via mutation. Agent reads tools by reference each turn so
   // late registration works.
-  const tools: typeof baseTools = [...baseTools, codeTaskTool, cancelTaskTool, listTasksTool, ...scheduleTools];
+  const tools: typeof baseTools = [...baseTools, codeTaskTool, cancelTaskTool, listTasksTool, ...scheduleTools, onboardingTool];
 
   // === Agent ===
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
-  const onboarding = new Onboarding(config.brainDir);
+  // Circuit breaker around the Anthropic client. After 3 consecutive failures
+  // we cool down 30s, doubling each subsequent reopening up to 10min cap.
+  // Without this, an Anthropic outage = autonomous wakes crash-loop forever.
+  const breaker = new CircuitBreaker({
+    threshold: 3,
+    baseCooldownMs: 30_000,
+    maxCooldownMs: 10 * 60_000,
+  });
   const agent = new Agent({
     client,
     brain,
@@ -105,6 +117,7 @@ async function main() {
     onboarding,
     tools,
     taskSummary: () => tasks.getSummary(),
+    breaker,
   });
 
   // === Bot ===
@@ -169,22 +182,41 @@ async function main() {
 
   async function fireAutonomous(): Promise<void> {
     autoTimer = null;
-    const reasons = [...pendingReasons];
-    pendingReasons.clear();
-    if (reasons.length === 0) return;
-    lastAutoAt = Date.now();
+    if (pendingReasons.size === 0) return;
 
-    // Quiet-hours check
+    // Quiet-hours check FIRST — preserve reasons + don't burn cooldown if we
+    // bail (Boris regression we hit at v5.16.x: dropping reasons here meant
+    // any task that completed during quiet hours got the user a "you missed
+    // X" silence the next morning).
     const hour = parseInt(
       new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles', hour: '2-digit', hour12: false }),
       10
     );
     const inQuiet = hour >= config.quietHours.start && hour < config.quietHours.end;
     if (inQuiet) {
-      console.log(`[autonomous] quiet hours — events queued for morning (reasons: ${reasons.join(',')})`);
-      // System events stay queued; user gets them when they message in the morning
+      console.log(`[autonomous] quiet hours — events stay queued (reasons: ${[...pendingReasons].join(',')})`);
+      // Re-arm a 30min retry — by then it might be out of quiet hours
+      autoTimer = setTimeout(() => fireAutonomous(), 30 * 60_000);
       return;
     }
+
+    // Also defer if user is mid-conversation (last 30s of conversation
+    // means they're typing back-and-forth; don't interrupt with autonomous).
+    // We approximate this by checking if last message in transcript is < 30s old.
+    const recent = conversations.recent(primaryChatId, 1);
+    if (recent.length > 0 && recent[0].role === 'user') {
+      const age = Date.now() - Date.parse(recent[0].ts);
+      if (age < 30_000) {
+        console.log(`[autonomous] deferring — user active ${Math.round(age / 1000)}s ago`);
+        autoTimer = setTimeout(() => fireAutonomous(), 30_000);
+        return;
+      }
+    }
+
+    // Past the gates — actually run. Now drain reasons + bump cooldown.
+    const reasons = [...pendingReasons];
+    pendingReasons.clear();
+    lastAutoAt = Date.now();
 
     const sysEvents = systemEvents.drain(primaryChatId);
     const notices =
@@ -202,7 +234,7 @@ async function main() {
         history: conversations.recent(primaryChatId, 20).map((t) => ({ role: t.role, content: t.content })),
       });
       if (result.text && result.text.trim() && result.text !== '(no text response)') {
-        await bot.api.sendMessage(primaryChatId, '🤖 ' + result.text.slice(0, 4000));
+        await safeSendMessage(bot, primaryChatId, '🤖 ' + result.text);
         conversations.append(primaryChatId, 'assistant', result.text);
       }
     } catch (e) {
@@ -268,7 +300,7 @@ async function main() {
       if (s.silent || delivery === 'silent_unless_flagged') {
         if (/\bFLAG:|ALERT:|⚠️/i.test(trimmed)) {
           // Promote flagged silent → telegram
-          await bot.api.sendMessage(primaryChatId, `📋 ${s.name}\n\n${trimmed.slice(0, 4000)}`).catch(() => {});
+          await safeSendMessage(bot, primaryChatId, `📋 ${s.name}\n\n${trimmed}`);
         } else {
           // Land in brain digest
           brain.save('digests', s.name, `## ${new Date().toISOString()}\n\n${trimmed}`);
@@ -277,7 +309,7 @@ async function main() {
         brain.save('digests', s.name, `## ${new Date().toISOString()}\n\n${trimmed}`);
       } else {
         // telegram — default
-        await bot.api.sendMessage(primaryChatId, `📋 ${s.name}\n\n${trimmed.slice(0, 4000)}`).catch(() => {});
+        await safeSendMessage(bot, primaryChatId, `📋 ${s.name}\n\n${trimmed}`);
       }
     }
   }

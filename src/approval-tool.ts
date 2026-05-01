@@ -10,8 +10,8 @@
 
 import { InlineKeyboard } from 'grammy';
 import type { Bot } from 'grammy';
-import type { ApprovalRegistry } from './approvals.js';
-import type { ToolHandler, ToolInput } from './types.js';
+import type { ApprovalRegistry } from './approvals.ts';
+import type { ToolHandler, ToolInput } from './types.ts';
 
 export interface ApprovalDeps {
   registry: ApprovalRegistry;

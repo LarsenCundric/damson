@@ -17,8 +17,8 @@
  *   - quiet hours: defer wakes, don't drop reasons
  */
 
-import type { EventBus } from './event-bus.js';
-import type { Event } from './types.js';
+import type { EventBus } from './event-bus.ts';
+import type { Event } from './types.ts';
 
 export interface AnnounceItem {
   id: string;

@@ -16,8 +16,8 @@
 
 import { existsSync, readdirSync, readFileSync, unlinkSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Brain } from './brain.js';
-import type { TaskManager } from './tasks.js';
+import type { Brain } from './brain.ts';
+import type { TaskManager } from './tasks.ts';
 
 export interface BriefSources {
   digests: Array<{ name: string; content: string }>;

@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { Event, EventType } from './types.js';
+import type { Event, EventType } from './types.ts';
 
 type Handler = (e: Event) => void | Promise<void>;
 

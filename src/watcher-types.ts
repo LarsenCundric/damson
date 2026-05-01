@@ -7,7 +7,7 @@
  * Each registers with the watcher registry. Add new types here.
  */
 
-import type { WatcherConfig, WatcherImpl, WatcherTickContext } from './watchers.js';
+import type { WatcherConfig, WatcherImpl, WatcherTickContext } from './watchers.ts';
 
 // ==================== http_poll ====================
 //

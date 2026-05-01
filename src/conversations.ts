@@ -3,9 +3,9 @@
  * before writing.
  */
 
-import { existsSync, appendFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { redactSecrets } from './secrets.js';
+import { redactSecrets } from './secrets.ts';
 
 export interface Turn {
   ts: string;
@@ -34,10 +34,11 @@ export class ConversationStore {
     appendFileSync(this.fileFor(chatId, date), JSON.stringify(turn) + '\n');
   }
 
-  /** Return last N turns across recent days. */
+  /** Return last N turns across recent days, respecting any /clear sentinel. */
   recent(chatId: number, count: number): Turn[] {
     const dir = join(this.brainDir, 'transcripts', String(chatId));
     if (!existsSync(dir)) return [];
+    const cutoff = this.clearedAt(chatId);
     const files = readdirSync(dir)
       .filter((f) => f.endsWith('.jsonl'))
       .sort()
@@ -47,7 +48,12 @@ export class ConversationStore {
       const lines = readFileSync(join(dir, f), 'utf-8').trim().split('\n').filter(Boolean);
       for (let i = lines.length - 1; i >= 0; i--) {
         try {
-          turns.push(JSON.parse(lines[i]));
+          const turn = JSON.parse(lines[i]) as Turn;
+          if (cutoff > 0 && Date.parse(turn.ts) < cutoff) {
+            // Hit the boundary — earlier turns are cleared
+            return turns.reverse();
+          }
+          turns.push(turn);
           if (turns.length >= count) break;
         } catch {}
       }
@@ -56,9 +62,28 @@ export class ConversationStore {
     return turns.reverse();
   }
 
+  /**
+   * Cut a "clear" boundary so subsequent recent() calls don't see prior
+   * turns. Implemented as a sentinel file (`<chatId>.cleared-at`) holding
+   * the timestamp; recent() filters everything older than that.
+   *
+   * This preserves history on disk (you can still memory_search it) while
+   * giving the user a clean conversational slate.
+   */
   clear(chatId: number): void {
-    // We don't actually delete history — we just stop loading it. The user can
-    // wipe brain/transcripts/<chatId>/ themselves if they want a real wipe.
-    // For v0.1 this is just a no-op; will be replaced with a marker file.
+    const dir = join(this.brainDir, 'transcripts', String(chatId));
+    mkdirSync(dir, { recursive: true });
+    const sentinel = join(dir, '.cleared-at');
+    writeFileSync(sentinel, new Date().toISOString());
+  }
+
+  private clearedAt(chatId: number): number {
+    const sentinel = join(this.brainDir, 'transcripts', String(chatId), '.cleared-at');
+    if (!existsSync(sentinel)) return 0;
+    try {
+      return Date.parse(readFileSync(sentinel, 'utf-8').trim()) || 0;
+    } catch {
+      return 0;
+    }
   }
 }

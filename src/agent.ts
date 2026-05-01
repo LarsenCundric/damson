@@ -6,11 +6,12 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { Brain } from './brain.js';
-import type { BrainConfig } from './config.js';
-import type { Onboarding } from './onboarding.js';
-import type { ToolHandler } from './types.js';
-import { buildSystemPrompt } from './system-prompt.js';
+import type { Brain } from './brain.ts';
+import type { BrainConfig } from './config.ts';
+import type { Onboarding } from './onboarding.ts';
+import type { ToolHandler } from './types.ts';
+import type { CircuitBreaker } from './circuit-breaker.ts';
+import { buildSystemPrompt } from './system-prompt.ts';
 
 const MAX_ITERATIONS = 20;
 
@@ -21,6 +22,8 @@ export interface AgentDeps {
   onboarding: Onboarding;
   tools: ToolHandler[];
   taskSummary: () => string;
+  /** Optional — if provided, wraps every Anthropic call. */
+  breaker?: CircuitBreaker;
 }
 
 export interface RunOpts {
@@ -118,17 +121,20 @@ export class Agent {
       iterations++;
       let response: Anthropic.Message;
       try {
-        const stream = this.deps.client.messages.stream({
-          model,
-          max_tokens: 4096,
-          system,
-          tools: this.toolDefsForApi(),
-          messages,
-        });
-        if (onTextChunk) {
-          stream.on('text', (chunk) => onTextChunk(chunk));
-        }
-        response = await stream.finalMessage();
+        const callApi = async (): Promise<Anthropic.Message> => {
+          const stream = this.deps.client.messages.stream({
+            model,
+            max_tokens: 4096,
+            system,
+            tools: this.toolDefsForApi(),
+            messages,
+          });
+          if (onTextChunk) {
+            stream.on('text', (chunk) => onTextChunk(chunk));
+          }
+          return stream.finalMessage();
+        };
+        response = this.deps.breaker ? await this.deps.breaker.run(callApi) : await callApi();
       } catch (e) {
         return { text: finalText, toolCalls, iterations, hitLimit: false, error: (e as Error).message };
       }

@@ -2,7 +2,7 @@
 
 Proactive personal agent for devs who actually ship.
 
-> **Status: 0.1 — early days. Working name. APIs will break.**
+> **Status: 0.5 — early days. Working name. APIs will break.**
 
 ## What it is
 

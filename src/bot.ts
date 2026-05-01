@@ -6,16 +6,17 @@ import { Bot, GrammyError, HttpError } from 'grammy';
 import type { Context } from 'grammy';
 import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Agent } from './agent.js';
-import type { Pairing } from './pairing.js';
-import type { ConversationStore } from './conversations.js';
-import type { DamsonConfig } from './types.js';
-import type { SystemEventQueue } from './system-events.js';
-import type { TaskManager } from './tasks.js';
-import type { SupervisedRun } from './supervisor.js';
-import type { ScheduleManager } from './schedules.js';
-import type { ApprovalRegistry } from './approvals.js';
-import { redactSecrets, KIND_TO_ENV } from './secrets.js';
+import type { Agent } from './agent.ts';
+import type { Pairing } from './pairing.ts';
+import type { ConversationStore } from './conversations.ts';
+import type { DamsonConfig } from './types.ts';
+import type { SystemEventQueue } from './system-events.ts';
+import type { TaskManager } from './tasks.ts';
+import type { SupervisedRun } from './supervisor.ts';
+import type { ScheduleManager } from './schedules.ts';
+import type { ApprovalRegistry } from './approvals.ts';
+import { safeSendMessage } from './tg-safe-send.ts';
+import { redactSecrets, KIND_TO_ENV } from './secrets.ts';
 
 const ENV_NAME_RE = /^[A-Z][A-Z0-9_]{1,63}$/;
 const CRITICAL_ENV = new Set(['BOT_TOKEN', 'TELEGRAM_USER_ID', 'ANTHROPIC_API_KEY']);
@@ -127,13 +128,13 @@ export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot:
     ctx.reply('🧹 conversation cleared.');
   });
 
-  bot.command('tasks', (ctx) => {
+  bot.command('tasks', async (ctx) => {
     const summary = deps.tasks.getSummary();
-    ctx.reply(summary || 'No active or recent tasks.');
+    await safeSendMessage(bot, ctx.chat.id, summary || 'No active or recent tasks.');
   });
 
-  bot.command('schedules', (ctx) => {
-    ctx.reply(deps.schedules.formatList());
+  bot.command('schedules', async (ctx) => {
+    await safeSendMessage(bot, ctx.chat.id, deps.schedules.formatList());
   });
 
   bot.command('brief', async (ctx) => {
@@ -141,7 +142,7 @@ export function startBot(deps: BotDeps): { bot: Bot; printPairingDeeplinkOnBoot:
     await ctx.reply('🌅 generating morning brief...');
     try {
       const text = await deps.briefHandler();
-      await ctx.reply(text.slice(0, 4000));
+      await safeSendMessage(bot, ctx.chat.id, text);
     } catch (e) {
       await ctx.reply(`Error: ${(e as Error).message}`);
     }
