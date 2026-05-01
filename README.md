@@ -26,7 +26,7 @@ On first run, damson prints a `https://t.me/<your-bot>?start=<token>` link. Tap 
 
 ## Requirements
 
-- Node 20+
+- Node 22+ (Node 24 recommended; `.nvmrc` pins it)
 - Anthropic API key
 - Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - `claude` CLI for code task workers (optional but most features need it)
